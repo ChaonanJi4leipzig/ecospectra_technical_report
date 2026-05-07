@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <meta name="author" content="Chaonan Ji" />
+  <title>EcoSpectra Trait Model Technical Report: Reintegrated Data Gate and Active Experiments</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    html {
+      color: #1a1a1a;
+      background-color: #fdfdfd;
+    }
+    body {
+      margin: 0 auto;
+      max-width: 36em;
+      padding-left: 50px;
+      padding-right: 50px;
+      padding-top: 50px;
+      padding-bottom: 50px;
+      hyphens: auto;
+      overflow-wrap: break-word;
+      text-rendering: optimizeLegibility;
+      font-kerning: normal;
+    }
+    @media (max-width: 600px) {
+      body {
+        font-size: 0.9em;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 1.8em;
+      }
+    }
+    @media print {
+      html {
+        background-color: white;
+      }
+      body {
+        background-color: transparent;
+        color: black;
+        font-size: 12pt;
+      }
+      p, h2, h3 {
+        orphans: 3;
+        widows: 3;
+      }
+      h2, h3, h4 {
+        page-break-after: avoid;
+      }
+    }
+    p {
+      margin: 1em 0;
+    }
+    a {
+      color: #1a1a1a;
+    }
+    a:visited {
+      color: #1a1a1a;
+    }
+    img {
+      max-width: 100%;
+    }
+    svg {
+      height: auto;
+      max-width: 100%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+      margin-top: 1.4em;
+    }
+    h5, h6 {
+      font-size: 1em;
+      font-style: italic;
+    }
+    h6 {
+      font-weight: normal;
+    }
+    ol, ul {
+      padding-left: 1.7em;
+      margin-top: 1em;
+    }
+    li > ol, li > ul {
+      margin-top: 0;
+    }
+    blockquote {
+      margin: 1em 0 1em 1.7em;
+      padding-left: 1em;
+      border-left: 2px solid #e6e6e6;
+      color: #606060;
+    }
+    div.abstract {
+      margin: 2em 2em 2em 2em;
+      text-align: left;
+      font-size: 85%;
+    }
+    div.abstract-title {
+      font-weight: bold;
+      text-align: center;
+      padding: 0;
+      margin-bottom: 0.5em;
+    }
+    code {
+      font-family: Menlo, Monaco, Consolas, 'Lucida Console', monospace;
+      font-size: 85%;
+      margin: 0;
+      hyphens: manual;
+    }
+    pre {
+      margin: 1em 0;
+      overflow: auto;
+    }
+    pre code {
+      padding: 0;
+      overflow: visible;
+      overflow-wrap: normal;
+    }
+    .sourceCode {
+     background-color: transparent;
+     overflow: visible;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #1a1a1a;
+      height: 1px;
+      margin: 1em 0;
+    }
+    table {
+      margin: 1em 0;
+      border-collapse: collapse;
+      width: 100%;
+      overflow-x: auto;
+      display: block;
+      font-variant-numeric: lining-nums tabular-nums;
+    }
+    table caption {
+      margin-bottom: 0.75em;
+    }
+    tbody {
+      margin-top: 0.5em;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      border-top: 1px solid #1a1a1a;
+      padding: 0.25em 0.5em 0.25em 0.5em;
+    }
+    td {
+      padding: 0.125em 0.5em 0.25em 0.5em;
+    }
+    header {
+      margin-bottom: 4em;
+      text-align: center;
+    }
+    #TOC li {
+      list-style: none;
+    }
+    #TOC ul {
+      padding-left: 1.3em;
+    }
+    #TOC > ul {
+      padding-left: 0;
+    }
+    #TOC a:not(:hover) {
+      text-decoration: none;
+    }
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">EcoSpectra Trait Model Technical Report: Reintegrated
+Data Gate and Active Experiments</h1>
+<p class="author">Chaonan Ji</p>
+<div class="abstract">
+<div class="abstract-title">Abstract</div>
+<p>This technical report documents the current EcoSpectra traits-model
+experiments built around the reintegrated trait-centered data path. The
+report uses the project technical-report format, but replaces the
+original content with an implementation-oriented record of the current
+data contract, model stack, active validation gates, and experiment
+status. The current pipeline is organized into four layers: upstream
+data preparation, sample and contract construction, canonical model
+training, and ablations or extended comparisons. The active first-pass
+scope validates five traits—leaf area index, leaf mass per area,
+nitrogen, chlorophyll, and lignin—under a Copernicus HRL 2021
+tree-cover-density mask. Completed results are reported only where
+manifests contain finished metrics; running, pending, and blocked rows
+are explicitly marked as such. The first complete ablation result
+available at report time is the ERA5-Land context comparison, where
+adding past-biweekly climate context improves mean test <span
+class="math inline"><em>R</em><sup>2</sup></span> across RF, MLP, and
+Transformer by 0.0216 and reduces mean test NRMSE by 0.29 percentage
+points over the five gate traits.</p>
+</div>
+</header>
+<div class="frontmatter">
+<div class="keyword">
+<p>vegetation traits ,Sentinel-2 ,EnMAP ,ERA5-Land ,random forest
+,neural sequence models ,technical report</p>
+</div>
+</div>
+<div class="linenumbers">
+<h1 id="introduction">Introduction</h1>
+<p>EcoSpectra develops trait-centered models for predicting vegetation
+functional traits from Earth-observation time series. The current work
+focuses on a reintegrated data path that rebuilds the sample and model
+contracts before promoting any new result to the full canonical model
+comparison. This is necessary because the trait-label source, forest
+mask, split policy, and model-ready sequence cache jointly define the
+scientific comparison: changing any of these components invalidates
+downstream model metrics.</p>
+<p>The active pipeline is documented in the project memory under an
+A/B/C/D architecture. Layer A prepares upstream data sources, Layer B
+constructs sample manifests and model contracts, Layer C trains the
+canonical model stack, and Layer D runs ablations and extended
+comparisons. The current report captures the status as of 2026-05-07 and
+is intended as a reproducible technical snapshot rather than a final
+manuscript.</p>
+<p>The report has three goals. First, it records the current data
+contract used by the reintegrated path. Second, it summarizes the
+experiments currently being run or interpreted. Third, it separates
+completed evidence from partial or pending work so that the next full
+20-trait canonical run can be promoted only after the 5-trait gate is
+clean.</p>
+<h1 id="data-and-study-area">Data and study area</h1>
+<h2 id="trait-label-and-predictor-sources">Trait-label and predictor
+sources</h2>
+<p>The trait-centered workflow uses sparse hyperspectral trait-label
+sources and dense temporal predictors. EnMAP remains the primary
+hyperspectral trait-label source; PRISMA v1 is implemented as an
+additional hyperspectral trait-label source under the project input
+tree. Sentinel-2 region zarrs provide the optical temporal predictor
+series <span class="citation" data-cites="drusch2012sentinel"></span>.
+Optional climate context is derived from ERA5-Land nearest-point daily
+zarrs covering the 50 EnMAP-compatible sites and years 2022–2025 <span
+class="citation" data-cites="munozsabater2021era5land"></span>.</p>
+<p>The canonical forest mask is Copernicus HRL 2021 tree-cover density,
+with inclusion defined as <span
+class="math inline"><em>T</em><em>C</em><em>D</em> ≥ 30</span>. Sites
+19, 30, and 47 are excluded by default because of land-cover coverage
+gaps. ForestPaths genus features remain ablation-only and are not part
+of the canonical mask.</p>
+<h2 id="current-data-contract">Current data contract</h2>
+<p>The current B-layer contract is trait-centered. Each event is defined
+by site, year, spatial pixel, trait time, and source provenance where
+available. Sentinel-2 observations are assembled in an eight-slot
+temporal window using a zero-plus-mask missing-observation policy. A
+critical data rule is that valid pixels are not assumed to have
+supervised labels: the B2 manifest construction must retain a finite
+trait-label check because <span
+class="math inline"><em>v</em><em>a</em><em>l</em><em>i</em><em>d</em>_<em>m</em><em>a</em><em>s</em><em>k</em> = 1</span>
+can still coincide with all trait labels missing.</p>
+<div id="tab:data_contract">
+<table>
+<caption>Current reintegrated-data contract used by active
+experiments.</caption>
+<thead>
+<tr>
+<th style="text-align: left;">Component</th>
+<th style="text-align: left;">Current setting</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Sample window</td>
+<td style="text-align: left;">28-day window, 14-day core, <span
+class="math inline"><em>T</em><sub><em>m</em><em>a</em><em>x</em></sub> = 8</span>
+temporal slots</td>
+</tr>
+<tr>
+<td style="text-align: left;">Forest mask</td>
+<td style="text-align: left;">Copernicus HRL 2021 <span
+class="math inline"><em>T</em><em>C</em><em>D</em> ≥ 30</span></td>
+</tr>
+<tr>
+<td style="text-align: left;">Excluded sites</td>
+<td style="text-align: left;">19, 30, 47</td>
+</tr>
+<tr>
+<td style="text-align: left;">Split policy</td>
+<td
+style="text-align: left;"><code>global_grouped_70_15_15_seed42</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Canonical input profile</td>
+<td style="text-align: left;"><code>with_full_time_context</code></td>
+</tr>
+<tr>
+<td style="text-align: left;">Sample metadata profile</td>
+<td style="text-align: left;"><code>none</code>; sample-own site and
+year are excluded from model inputs</td>
+</tr>
+<tr>
+<td style="text-align: left;">Gate traits</td>
+<td style="text-align: left;">LAI, LMA, Nitrogen, Chlorophyll,
+Lignin</td>
+</tr>
+<tr>
+<td style="text-align: left;">Label rule</td>
+<td style="text-align: left;">Preserve finite-label and label-mask
+contracts across all model families</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h1 id="methods">Methods</h1>
+<h2 id="pipeline-architecture">Pipeline architecture</h2>
+<p>The current execution architecture is shown in Fig. <a
+href="#fig:pipeline" data-reference-type="ref"
+data-reference="fig:pipeline">1</a>. Upstream source preparation is
+separated from model-contract construction so that changes in
+Sentinel-2, hyperspectral labels, HRL, ERA5-Land, or future auxiliary
+sources can be traced to the downstream artifacts they invalidate. Model
+training is only meaningful after the B-layer filtered contract and
+sequence cache pass validation.</p>
+<figure id="fig:pipeline" data-latex-placement="H">
+<img src="Figure1_pipeline_architecture.png" style="width:95.0%" />
+<figcaption>Current EcoSpectra model architecture used as the starting
+point for report figures. In this report, RF is the canonical tree lane,
+MLP and Transformer are sequence-model lanes, and
+LightGBM/XGBoost/LSTM/RNN remain extended comparisons unless explicitly
+promoted.</figcaption>
+</figure>
+<h2 id="model-families">Model families</h2>
+<p>The canonical C-layer model stack consists of random forest, sequence
+MLP, and Transformer. Random forest provides the CPU tree baseline <span
+class="citation" data-cites="breiman2001random"></span>; sequence MLP
+and Transformer consume the B8 temporal sequence cache, with Transformer
+following the self-attention sequence-model family introduced by <span
+class="citation" data-cites="vaswani2017attention"></span>. LightGBM and
+XGBoost are active extended tree comparisons in D-layer experiments, not
+the current canonical C definition.</p>
+<p>Fixed hyperparameters for future reintegrated-data experiments are
+taken from the cap2000 train20 hyperparameter searches recorded in the
+project memory. RF, LightGBM, and XGBoost use trait-specific defaults
+for the five gate traits. MLP and Transformer currently use the
+LMA-selected settings as neural defaults unless newer trait-specific
+searches supersede them.</p>
+<h2 id="evaluation">Evaluation</h2>
+<p>Experiments use train, validation, and test partitions from the
+grouped split. Scalers, target transforms, imputers, and normalizers are
+fit on train data only. Metrics are reported in original trait scale
+through RMSE, normalized RMSE, and <span
+class="math inline"><em>R</em><sup>2</sup></span>. When a run is still
+active, this report records status from the run manifest instead of
+inferring missing metrics.</p>
+<h1 id="active-experiments">Active experiments</h1>
+<h2 id="reintegrated-b-d-c-gate">Reintegrated B-D-C gate</h2>
+<p>The current task is to validate the reintegrated data path before
+launching a full 20-trait canonical comparison. The active source
+manifest is <code>dev_sample_manifest.csv</code>. B-layer artifacts are
+written under a reintegrated output root, with an initial capped 5-trait
+gate under the HRL <span
+class="math inline"><em>T</em><em>C</em><em>D</em> ≥ 30</span> mask. The
+cap2000 sharded-sequence gate defines 15 planned model-trait rows: RF,
+MLP, and Transformer across the five gate traits.</p>
+<figure id="fig:data_distribution" data-latex-placement="H">
+<img src="Figure2_data_distribution.png" style="width:95.0%" />
+<figcaption>Data distribution diagnostics for the reintegrated cap2000
+5-trait gate.</figcaption>
+</figure>
+<figure id="fig:gate_heatmap" data-latex-placement="H">
+<img src="Figure3_reintegrated_performance_heatmap.png"
+style="width:95.0%" />
+<figcaption>Prompt-standard performance heatmap from the reintegrated
+cap2000 5-trait running summary. Metrics are interpreted only for
+completed rows.</figcaption>
+</figure>
+<figure id="fig:gate_scatter" data-latex-placement="H">
+<img src="Figure4_reintegrated_scatter.png" style="width:95.0%" />
+<figcaption>Observed versus predicted trait values from the reintegrated
+cap2000 5-trait running summary.</figcaption>
+</figure>
+<h2
+id="cap2000-best-hp-low-observation-weighted-five-model-experiment">Cap2000
+best-HP low-observation-weighted five-model experiment</h2>
+<p>The low-observation-weighted experiment tests RF, XGBoost, LightGBM,
+MLP, and Transformer on the cap2000 five gate traits, with
+<code>train_fraction=0.2</code>. Samples with fewer than three valid
+temporal observations receive training weight 0.5; all other samples
+receive weight 1.0. The tree lanes can run with the existing
+trait-specific incumbents. MLP and Transformer are blocked for four
+traits until five-trait neural incumbents are complete.</p>
+<div id="tab:lowobs_status">
+<table>
+<caption>Status of the cap2000 best-HP low-observation-weighted
+five-model run from <code>run_manifest.csv</code>.</caption>
+<thead>
+<tr>
+<th style="text-align: left;">Model</th>
+<th style="text-align: right;">Blocked</th>
+<th style="text-align: right;">OK</th>
+<th style="text-align: right;">Pending</th>
+<th style="text-align: right;">Running</th>
+<th style="text-align: right;">Skipped</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">LightGBM</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;">MLP</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">1</td>
+</tr>
+<tr>
+<td style="text-align: left;">Random forest</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">1</td>
+<td style="text-align: right;">0</td>
+</tr>
+<tr>
+<td style="text-align: left;">Transformer</td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">1</td>
+</tr>
+<tr>
+<td style="text-align: left;">XGBoost</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">0</td>
+</tr>
+</tbody>
+</table>
+</div>
+<p>At report time, the only completed low-observation-weighted metric
+row is RF on LMA: 32,276 train samples, 34,586 validation samples,
+34,427 test samples, test NRMSE 12.09%, and test <span
+class="math inline"><em>R</em><sup>2</sup> = 0.437</span>. All other
+low-observation-weighted metrics should be treated as unavailable until
+their manifest rows reach <code>ok</code>.</p>
+<figure id="fig:lowobs_heatmap" data-latex-placement="H">
+<img src="Figure7_lowobs_performance_heatmap.png" style="width:95.0%" />
+<figcaption>Cap2000 best-HP low-observation-weighted prompt-standard
+heatmap. The figure is retained as a report placeholder while the
+manifest still contains pending and blocked rows.</figcaption>
+</figure>
+<h2 id="era5-land-context-ablation">ERA5-Land context ablation</h2>
+<p>The ERA5-Land ablation compares the canonical full-time-context
+profile against the same profile augmented with past-biweekly ERA5-Land
+context. It uses RF, MLP, and Transformer across LAI, LMA, Nitrogen,
+Chlorophyll, and Lignin, paired by the same grouped split and trait
+scope.</p>
+<div id="tab:era5_delta">
+<table>
+<caption>Mean paired ERA5-Land deltas over five gate traits. Positive
+<span class="math inline"><em>Δ</em><em>R</em><sup>2</sup></span> and
+negative <span class="math inline"><em>Δ</em></span>NRMSE indicate
+improvement from adding ERA5-Land context.</caption>
+<thead>
+<tr>
+<th style="text-align: left;">Model</th>
+<th style="text-align: right;">Traits</th>
+<th style="text-align: right;">Mean <span
+class="math inline"><em>Δ</em><em>R</em><sup>2</sup></span></th>
+<th style="text-align: right;">Mean <span
+class="math inline"><em>Δ</em></span>NRMSE percentage points</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">MLP</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">0.0343</td>
+<td style="text-align: right;">-0.4617</td>
+</tr>
+<tr>
+<td style="text-align: left;">Random forest</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">0.0270</td>
+<td style="text-align: right;">-0.3567</td>
+</tr>
+<tr>
+<td style="text-align: left;">Transformer</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">0.0035</td>
+<td style="text-align: right;">-0.0512</td>
+</tr>
+<tr>
+<td style="text-align: left;">All paired rows</td>
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">0.0216</td>
+<td style="text-align: right;">-0.2899</td>
+</tr>
+</tbody>
+</table>
+</div>
+<figure id="fig:era5_barplot" data-latex-placement="H">
+<img src="Figure5_era5_barplot.png" style="width:95.0%" />
+<figcaption>ERA5-Land ablation performance summary generated from paired
+model-trait outputs.</figcaption>
+</figure>
+<figure id="fig:era5_scatter" data-latex-placement="H">
+<img src="Figure8_era5_scatter.png" style="width:95.0%" />
+<figcaption>ERA5-Land ablation observed-versus-predicted
+diagnostic.</figcaption>
+</figure>
+<h2 id="hyperparameter-and-year-combination-sensitivity">Hyperparameter
+and year-combination sensitivity</h2>
+<p>The cap2000 train20 hyperparameter searches provide the fixed
+defaults used by the current reintegrated experiments. Tree
+hyperparameter search outputs contain 510 rows across RF, LightGBM, and
+XGBoost and the five gate traits. The year-combination sensitivity
+experiment is registered and has a 60-row manifest across XGBoost, MLP,
+and Transformer, but at report time it is not yet complete enough for
+result interpretation.</p>
+<figure id="fig:hp_summary" data-latex-placement="H">
+<img src="Figure6_cap2000_search_summary.png" style="width:85.0%" />
+<figcaption>Summary figure from cap2000 tree and neural
+hyperparameter-search interpretation.</figcaption>
+</figure>
+<h1 id="discussion">Discussion</h1>
+<p>The current evidence supports three practical conclusions. First, the
+reintegrated path is now sufficiently structured to be reported through
+a B-D-C gate: source matching, HRL filtering, grouped splits, and
+sequence-cache construction are treated as explicit contracts rather
+than implicit preprocessing details. Second, ERA5-Land context currently
+shows a consistent positive paired signal, strongest for MLP and RF and
+weak for Transformer. Third, the low-observation-weighted five-model
+comparison is not yet mature enough for scientific interpretation
+because most rows are still pending, blocked, or running.</p>
+<p>The main limitation of this report is that it is a live technical
+snapshot. Some figures are generated from running summaries and should
+be regenerated after all manifest rows reach final status. In
+particular, low-observation weighting and year-combination sensitivity
+require updated manifests before their results can be promoted from
+status tracking to scientific conclusions.</p>
+<h1 id="conclusion">Conclusion</h1>
+<p>This first EcoSpectra technical-report version establishes a
+reproducible narrative for the active reintegrated traits-model
+experiments. The next report revision should update all run manifests,
+regenerate prompt-standard figures, replace placeholder running-summary
+interpretations with final metrics, and then decide whether the 5-trait
+gate is clean enough to launch the full 20-trait canonical RF, MLP, and
+Transformer comparison.</p>
+<h1 class="unnumbered" id="acknowledgments">Acknowledgments</h1>
+<p>This report is generated from the EcoSpectra traits-model project
+memory, run manifests, and prompt-standard analysis figures available on
+2026-05-07.</p>
+</div>
+</body>
+</html>
