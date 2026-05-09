@@ -1,6 +1,6 @@
 # EcoSpectra Technical Report
 
-First technical-report draft for the EcoSpectra traits-model reintegrated-data gate and active experiments.
+Technical-report draft for the EcoSpectra traits-model reintegrated-data gate, accuracy-improvement lanes, and active experiments.
 
 The LaTeX structure was initialized from `ecospectra_model_technical_report.zip` and the scientific content was replaced with the current EcoSpectra model-report content.
 

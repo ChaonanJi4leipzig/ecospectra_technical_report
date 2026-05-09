@@ -21,7 +21,7 @@
 \begin{document}
 \begin{frontmatter}
 
-\title{EcoSpectra Trait Model Technical Report: Reintegrated Data Gate and Active Experiments}
+\title{EcoSpectra Trait Model Technical Report: Accuracy-Improvement Lanes and Active Experiments}
 
 \author{Chaonan Ji\corref{cor1}}
 \cortext[cor1]{Corresponding author}
@@ -29,7 +29,7 @@
 \address{EcoSpectra traits-model project}
 
 \begin{abstract}
-This technical report documents the current EcoSpectra traits-model experiments built around the reintegrated trait-centered data path. The report uses the project technical-report format, but replaces the original content with an implementation-oriented record of the current data contract, model stack, active validation gates, and experiment status. The current pipeline is organized into four layers: upstream data preparation, sample and contract construction, canonical model training, and ablations or extended comparisons. The active first-pass scope validates five traits---leaf area index, leaf mass per area, nitrogen, chlorophyll, and lignin---under a Copernicus HRL 2021 tree-cover-density mask. Completed results are reported only where manifests contain finished metrics; running, pending, and blocked rows are explicitly marked as such. The first complete ablation result available at report time is the ERA5-Land context comparison, where adding past-biweekly climate context improves mean test $R^2$ across RF, MLP, and Transformer by 0.0216 and reduces mean test NRMSE by 0.29 percentage points over the five gate traits.
+This technical report documents the current EcoSpectra traits-model experiments built around the reintegrated trait-centered data path. The report uses the project technical-report format, but replaces the original content with an implementation-oriented record of the current data contract, model stack, active validation gates, and experiment status. The current pipeline is organized into four layers: upstream data preparation, sample and contract construction, canonical model training, and ablations or extended comparisons. The active first-pass scope validates five traits---leaf area index, leaf mass per area, nitrogen, chlorophyll, and lignin---under a Copernicus HRL 2021 tree-cover-density mask. This 2026-05-09 update organizes accuracy-improvement work into five lanes: ERA5 climate context, ambient self-supervised temporal priors, spatial context, temporal-generalization diagnostics, and trait-relationship multitask learning. Completed results are reported only where manifests contain finished metrics; running or pending rows have blank result cells. The strongest completed positive signal remains ERA5-Land for RF and MLP, while the completed spatial-patch fast gate does not improve over the current sequence Transformer baseline.
 \end{abstract}
 
 \begin{keyword}
@@ -43,7 +43,7 @@ vegetation traits \sep Sentinel-2 \sep EnMAP \sep ERA5-Land \sep random forest \
 
 EcoSpectra develops trait-centered models for predicting vegetation functional traits from Earth-observation time series. The current work focuses on a reintegrated data path that rebuilds the sample and model contracts before promoting any new result to the full canonical model comparison. This is necessary because the trait-label source, forest mask, split policy, and model-ready sequence cache jointly define the scientific comparison: changing any of these components invalidates downstream model metrics.
 
-The active pipeline is documented in the project memory under an A/B/C/D architecture. Layer A prepares upstream data sources, Layer B constructs sample manifests and model contracts, Layer C trains the canonical model stack, and Layer D runs ablations and extended comparisons. The current report captures the status as of 2026-05-07 and is intended as a reproducible technical snapshot rather than a final manuscript.
+The active pipeline is documented in the project memory under an A/B/C/D architecture. Layer A prepares upstream data sources, Layer B constructs sample manifests and model contracts, Layer C trains the canonical model stack, and Layer D runs ablations and extended comparisons. The current report captures the status as of 2026-05-09 and is intended as a reproducible technical snapshot rather than a final manuscript.
 
 The report has three goals. First, it records the current data contract used by the reintegrated path. Second, it summarizes the experiments currently being run or interpreted. Third, it separates completed evidence from partial or pending work so that the next full 20-trait canonical run can be promoted only after the 5-trait gate is clean.
 
@@ -103,6 +103,66 @@ Fixed hyperparameters for future reintegrated-data experiments are taken from th
 Experiments use train, validation, and test partitions from the grouped split. Scalers, target transforms, imputers, and normalizers are fit on train data only. Metrics are reported in original trait scale through RMSE, normalized RMSE, and $R^2$. When a run is still active, this report records status from the run manifest instead of inferring missing metrics.
 
 \section{Active experiments}
+
+\subsection{Accuracy-improvement lane settings}
+
+The current accuracy work is organized as five lanes so that each hypothesis has a defined data scope, model scope, promotion rule, output root, and notebook. Unless otherwise noted, all lanes use cap2000, \texttt{train\_fraction=0.2}, the \texttt{with\_full\_time\_context} input profile, \texttt{sample\_metadata\_profile=none}, and the \texttt{global\_grouped\_70\_15\_15\_seed42} split. Blank result cells in later tables mean that the corresponding JZ run or diagnostic consolidation has not yet produced a final local result.
+
+\begin{table}[H]
+\centering
+\caption{Current accuracy-improvement lane settings.}
+\label{tab:accuracy_lanes_settings}
+\begin{tabularx}{\linewidth}{p{0.08\linewidth}p{0.19\linewidth}X p{0.17\linewidth}}
+\toprule
+Lane & Question & Current experimental setting & Notebook \\
+\midrule
+L1 Climate / ERA5 & Does past-only ERA5-Land context add predictive information beyond Sentinel-2? & Decision traits LAI, LMA, Nitrogen; completed paired recovery root also covers LAI, LMA, Nitrogen, Chlorophyll, and Lignin. Models are RF, MLP, and Transformer. Arms are \texttt{with\_full\_time\_context} and \texttt{with\_full\_time\_context\_era5}. & \texttt{inspect\_L1\_climate\_era5\_cap2000\_train20.ipynb} \\
+L2 Ambient prior & Does self-supervised Sentinel-2 sequence pretraining improve Transformer trait prediction? & Five gate traits. Model is Transformer. Arms are \texttt{baseline\_checkpoint\_arch}, \texttt{transformer\_ambient\_init\_freeze5\_lr0.1}, and \texttt{transformer\_ambient\_init\_freeze10\_lr0.1}. Hyperparameters follow the ambient-checkpoint-compatible setting: batch 128, dropout 0.2, learning rate 0.0003, dimension 128, 4 heads, 3 layers, weight decay 0.0001. JZ job \texttt{697149}, account \texttt{dho@a100}. & \texttt{inspect\_L2\_ambient\_transformer\_cap2000\_train20.ipynb} \\
+L3 Spatial context & Is the pixel-level temporal model missing useful local spatial context? & Fast gate LAI and LMA. Arm is a 3x3 spatial patch CNN temporal regressor against the current sequence Transformer best-HP baseline. Promotion requires non-regression on LAI and LMA before any five-trait or spatial-temporal Transformer expansion. & \texttt{inspect\_L3\_spatial\_context\_cap2000\_train20.ipynb} \\
+L4 Temporal diagnostics & Is year-to-year transfer the main reason accuracy remains below publication level? & No new heavy training by default. Consolidate year-combination, by-year, by-site, trait-range, observation-count, mask-coverage, and climate-sensitivity diagnostics from existing outputs. & \texttt{inspect\_L4\_temporal\_generalization\_diagnostics.ipynb} \\
+L5 Trait relationship & Can biologically related multitask groups reduce negative transfer from the all-20 shared encoder? & Models are MLP and Transformer. Trait groups are resource traits (LMA, C, Cellulose, Fiber, Lignin), pigment/nitrogen traits (Chlorophyll, Carotenoid, Anthocyanin, Nitrogen), and canopy-water traits (LAI, EWT). Sequential JZ blocks are \texttt{group\_mse\_standard}, \texttt{group\_huber\_standard}, \texttt{group\_huber\_yj}, and \texttt{group\_huber\_yj\_balanced}; jobs \texttt{696652 -> 696658 -> 696659 -> 696660}, account \texttt{dho@a100}. & \texttt{inspect\_traitrel\_multitask.ipynb} \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Accuracy-lane result snapshot}
+
+Table~\ref{tab:accuracy_lanes_completed} summarizes completed lane-level results that are ready for interpretation. L1 is positive for RF and MLP and weak for Transformer. L3 does not pass the fast gate because the 3x3 patch CNN is worse than the current sequence Transformer baseline on both LAI and LMA.
+
+\begin{table}[H]
+\centering
+\caption{Completed accuracy-lane result snapshot. Positive $\Delta R^2$ and negative $\Delta$NRMSE indicate improvement.}
+\label{tab:accuracy_lanes_completed}
+\begin{tabular}{lllrrl}
+\toprule
+Lane & Scope & Model or arm & Test $R^2$ / $\Delta R^2$ & Test NRMSE / $\Delta$NRMSE & Decision \\
+\midrule
+L1 & LAI/LMA/Nitrogen & MLP + ERA5 vs baseline & 0.0300 & -0.4466 pp & Positive climate signal \\
+L1 & LAI/LMA/Nitrogen & RF + ERA5 vs baseline & 0.0228 & -0.3219 pp & Positive climate signal \\
+L1 & LAI/LMA/Nitrogen & Transformer + ERA5 vs baseline & 0.0148 & -0.1716 pp & Weak; trait-specific regressions remain \\
+\midrule
+L3 & LAI & 3x3 patch CNN & 0.6112 & 8.9243\% & Worse than baseline \\
+L3 & LAI & Sequence Transformer baseline & 0.6361 & 8.6333\% & Current baseline \\
+L3 & LMA & 3x3 patch CNN & 0.4641 & 11.7882\% & Worse than baseline \\
+L3 & LMA & Sequence Transformer baseline & 0.4992 & 11.3953\% & Current baseline \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Accuracy-lane rows whose final results are not yet available locally. Result cells are intentionally left blank until final metrics are pulled and checked.}
+\label{tab:accuracy_lanes_pending}
+\begin{tabularx}{\linewidth}{p{0.09\linewidth}p{0.24\linewidth}p{0.36\linewidth}X}
+\toprule
+Lane & Run or output root & Current status & Result \\
+\midrule
+L2 & JZ job \texttt{697149}; local root \texttt{accuracy\_lanes\_20260509/L2\_ambient\_transformer\_cap2000\_train20} & Running/pending final pull. Compare five-trait paired nRMSE deltas after all 15 tasks complete. & \\
+L4 & Existing cap2000 year-combination and no-pooling roots & Diagnostic consolidation pending. Existing evidence indicates weak temporal transfer, but the final diagnostic table is not yet promoted. & \\
+L5 & JZ sequential blocks \texttt{696652 -> 696658 -> 696659 -> 696660}; local root \texttt{traitrel\_multitask\_train20\_20260509} & Running. Compare grouped multitask arms against corresponding single-trait best-HP and all-20 multitask baselines after watcher pull. & \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
 \subsection{Reintegrated B-D-C gate}
 
@@ -207,17 +267,17 @@ The cap2000 train20 hyperparameter searches provide the fixed defaults used by t
 
 \section{Discussion}
 
-The current evidence supports three practical conclusions. First, the reintegrated path is now sufficiently structured to be reported through a B-D-C gate: source matching, HRL filtering, grouped splits, and sequence-cache construction are treated as explicit contracts rather than implicit preprocessing details. Second, ERA5-Land context currently shows a consistent positive paired signal, strongest for MLP and RF and weak for Transformer. Third, the low-observation-weighted five-model comparison is not yet mature enough for scientific interpretation because most rows are still pending, blocked, or running.
+The current evidence supports four practical conclusions. First, the reintegrated path is now sufficiently structured to be reported through a B-D-C gate: source matching, HRL filtering, grouped splits, and sequence-cache construction are treated as explicit contracts rather than implicit preprocessing details. Second, ERA5-Land context currently shows a useful paired signal for RF and MLP, but the Transformer result is weak and includes trait-level regressions, so ERA5 should be treated as a model-family-specific accuracy lever rather than a universal default. Third, the lightweight spatial-context gate does not support immediate expansion: the 3x3 patch CNN is worse than the sequence Transformer on both LAI and LMA. Fourth, the ambient-prior, temporal-diagnostic, and trait-relationship multitask lanes are still active and should not be interpreted until their final local summaries are pulled and checked.
 
-The main limitation of this report is that it is a live technical snapshot. Some figures are generated from running summaries and should be regenerated after all manifest rows reach final status. In particular, low-observation weighting and year-combination sensitivity require updated manifests before their results can be promoted from status tracking to scientific conclusions.
+The main limitation of this report is that it is a live technical snapshot. Some figures are generated from running summaries and should be regenerated after all manifest rows reach final status. In particular, the L2 ambient-prior and L5 trait-relationship results require completed JZ pulls, and the L4 temporal-generalization diagnostics require a consolidated notebook table before their results can be promoted from status tracking to scientific conclusions.
 
 \section{Conclusion}
 
-This first EcoSpectra technical-report version establishes a reproducible narrative for the active reintegrated traits-model experiments. The next report revision should update all run manifests, regenerate prompt-standard figures, replace placeholder running-summary interpretations with final metrics, and then decide whether the 5-trait gate is clean enough to launch the full 20-trait canonical RF, MLP, and Transformer comparison.
+This EcoSpectra technical-report revision establishes a reproducible narrative for the current accuracy-improvement lanes. The immediate next revision should fill the blank L2, L4, and L5 result cells after final local summaries are available, regenerate prompt-standard figures, and then decide which lane merits promotion beyond cap2000 train20.
 
 \section*{Acknowledgments}
 
-This report is generated from the EcoSpectra traits-model project memory, run manifests, and prompt-standard analysis figures available on 2026-05-07.
+This report is generated from the EcoSpectra traits-model project memory, run manifests, and prompt-standard analysis figures available on 2026-05-09.
 
 \bibliographystyle{elsarticle-harv}
 \bibliography{ecospectra_reference}
