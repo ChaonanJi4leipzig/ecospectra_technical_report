@@ -1,8 +1,8 @@
-# EcoSpectra RSE Methods Manuscript
+# Sentinel-2 Trait-Centered RSE Methods Manuscript
 
-Fast-deliverable manuscript version for a Remote Sensing of Environment methods paper on trait-centered Sentinel-2 learning from sparse hyperspectral labels.
+Manuscript draft for a Remote Sensing of Environment methods paper on trait-centered Sentinel-2 time-series learning from sparse hyperspectral labels.
 
-The central claim is methodological: predicting forest functional traits from Sentinel-2 time series requires explicit treatment of temporal representation, auxiliary information, and temporal/spatial generalization. This version reports validated EnMAP-based model results and specifies PRISMA as the next label-source ablation.
+The central claim is methodological: predicting forest functional traits from Sentinel-2 time series requires explicit treatment of temporal representation, auxiliary information, and temporal/spatial generalization.
 
 Primary source files:
 
@@ -12,10 +12,8 @@ Primary source files:
 
 Current figure set:
 
-- `Figure1_pipeline_architecture.png`: trait-centered workflow
-- `Figure2_data_distribution.png`: labeled-sample distribution
+- `Figure1_trait_centered_framework.pdf`: trait-centered methods schematic
 - `Figure3_reintegrated_performance_heatmap.png`: five-trait baseline accuracy
-- `Figure4_reintegrated_scatter.png`: baseline observed-vs-predicted diagnostics
 - `Figure5_sample_size_curve.png`: sample-size ablation
 - `Figure6_temporal_window_curve.png`: temporal-window ablation
 - `Figure5_era5_barplot.png`: ERA5 auxiliary-information ablation
