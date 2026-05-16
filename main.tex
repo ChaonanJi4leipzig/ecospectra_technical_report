@@ -16,12 +16,12 @@
 \usepackage{array}
 \usepackage[hidelinks]{hyperref}
 
-\journal{EcoSpectra Technical Report}
+\journal{Remote Sensing of Environment}
 
 \begin{document}
 \begin{frontmatter}
 
-\title{EcoSpectra Trait Model Technical Report: Accuracy-Improvement Lanes and Active Experiments}
+\title{Trait-centered learning of forest functional traits from Sentinel-2 time series and sparse hyperspectral labels}
 
 \author{Chaonan Ji\corref{cor1}}
 \cortext[cor1]{Corresponding author}
@@ -29,11 +29,11 @@
 \address{EcoSpectra traits-model project}
 
 \begin{abstract}
-This technical report documents the current EcoSpectra traits-model experiments built around the reintegrated trait-centered data path. The report uses the project technical-report format, but replaces the original content with an implementation-oriented record of the current data contract, model stack, active validation gates, and experiment status. The current pipeline is organized into four layers: upstream data preparation, sample and contract construction, canonical model training, and ablations or extended comparisons. The active first-pass scope validates five traits---leaf area index, leaf mass per area, nitrogen, chlorophyll, and lignin---under a Copernicus HRL 2021 tree-cover-density mask. This 2026-05-09 update organizes accuracy-improvement work into five lanes: ERA5 climate context, ambient self-supervised temporal priors, spatial context, temporal-generalization diagnostics, and trait-relationship multitask learning. Completed results are reported only where manifests contain finished metrics; running or pending rows have blank result cells. The strongest completed positive signal remains ERA5-Land for RF and MLP, while the completed spatial-patch fast gate does not improve over the current sequence Transformer baseline.
+Predicting forest functional traits from Sentinel-2 time series using sparse hyperspectral labels requires explicit treatment of design choices that are often hidden inside preprocessing pipelines. We present a trait-centered training framework and a systematic ablation of three under-examined choices: temporal representation, auxiliary information, and out-of-domain generalization. The framework links EnMAP-derived trait estimates to Sentinel-2 observations through finite-label sample construction, a zero-plus-mask temporal representation, and train-only preprocessing contracts. We evaluate random forest, sequence multilayer perceptron, and Transformer models for leaf area index, leaf mass per area, nitrogen, chlorophyll, and lignin. The initial benchmark establishes strong trait dependence in predictive skill and motivates method-level ablations. Increasing the per-site-year sample cap improves accuracy for the three-trait B5/B6-filtered benchmark but shows diminishing returns between 5000 and 20000 samples per site-year. In a sample-matched temporal-window experiment, a 28-day window gives the best mean performance among the tested windows, indicating that longer temporal context is not automatically beneficial once sample availability is controlled. ERA5-Land climate context improves random forest and MLP performance but has weak and trait-specific effects for the Transformer, suggesting that auxiliary information is model-family specific. Cross-year and cross-site experiments show substantially lower transfer performance than grouped in-domain evaluation, especially for chlorophyll, indicating that temporal and spatial distribution shifts must be treated as first-class validation regimes. PRISMA is incorporated as the next label-source ablation axis, but this version reports only validated EnMAP-based training results.
 \end{abstract}
 
 \begin{keyword}
-vegetation traits \sep Sentinel-2 \sep EnMAP \sep ERA5-Land \sep random forest \sep neural sequence models \sep technical report
+vegetation traits \sep Sentinel-2 \sep EnMAP \sep PRISMA \sep ERA5-Land \sep temporal generalization \sep hyperspectral labels
 \end{keyword}
 \end{frontmatter}
 
@@ -41,201 +41,142 @@ vegetation traits \sep Sentinel-2 \sep EnMAP \sep ERA5-Land \sep random forest \
 
 \section{Introduction}
 
-EcoSpectra develops trait-centered models for predicting vegetation functional traits from Earth-observation time series. The current work focuses on a reintegrated data path that rebuilds the sample and model contracts before promoting any new result to the full canonical model comparison. This is necessary because the trait-label source, forest mask, split policy, and model-ready sequence cache jointly define the scientific comparison: changing any of these components invalidates downstream model metrics.
+Sentinel-2 provides dense optical time series that are well suited for monitoring seasonal vegetation dynamics, but supervised forest-trait modelling remains limited by the sparse availability of hyperspectral trait labels. EnMAP and PRISMA can provide spatially explicit trait estimates, yet these labels are irregular in space and time and are produced by their own retrieval pipelines. A Sentinel-2 trait model therefore has to solve more than a standard regression problem: it must connect sparse labelled events to temporal optical observations, handle missing observations, and remain interpretable under shifts in year, site, and label source.
 
-The active pipeline is documented in the project memory under an A/B/C/D architecture. Layer A prepares upstream data sources, Layer B constructs sample manifests and model contracts, Layer C trains the canonical model stack, and Layer D runs ablations and extended comparisons. The current report captures the status as of 2026-05-09 and is intended as a reproducible technical snapshot rather than a final manuscript.
+This paper focuses on the methodological choices behind that task. We do not frame the current analysis as a delivered trait map. Instead, we ask which design choices are required before such a modelling system can be defended scientifically. In particular, we test whether predictive skill is controlled by the amount of labelled data, by the temporal representation of Sentinel-2 observations, by auxiliary information streams such as climate context or self-supervised temporal pretraining, and by out-of-domain evaluation across years and sites.
 
-The report has three goals. First, it records the current data contract used by the reintegrated path. Second, it summarizes the experiments currently being run or interpreted. Third, it separates completed evidence from partial or pending work so that the next full 20-trait canonical run can be promoted only after the 5-trait gate is clean.
+Our contribution is threefold. First, we define a trait-centered sample construction that starts from finite hyperspectral trait labels rather than from all valid pixels. This distinction is important because valid optical observations are not equivalent to supervised trait labels. Second, we compare a compact canonical model stack---random forest, sequence MLP, and Transformer---under shared sample, split, and preprocessing contracts. Third, we organize the evaluation into four thematic ablation blocks: baseline performance, data-volume and temporal-window design, auxiliary information streams, and temporal/spatial generalization. A fifth label-source ablation, EnMAP versus PRISMA versus pooled supervision, is specified as a required extension because it directly tests whether the model learns forest traits or sensor-specific retrieval bias.
 
-\section{Data and study area}
+\section{Data}
 
-\subsection{Trait-label and predictor sources}
+\subsection{Study sites and mask}
 
-The trait-centered workflow uses sparse hyperspectral trait-label sources and dense temporal predictors. EnMAP remains the primary hyperspectral trait-label source; PRISMA v1 is implemented as an additional hyperspectral trait-label source under the project input tree. Sentinel-2 region zarrs provide the optical temporal predictor series \citep{drusch2012sentinel}. Optional climate context is derived from ERA5-Land nearest-point daily zarrs covering the 50 EnMAP-compatible sites and years 2022--2025 \citep{munozsabater2021era5land}.
+The analysis uses the EcoSpectra forest-site data path built around retained European sites with Sentinel-2, hyperspectral trait-label, climate, and land-cover support. The forest analysis mask is Copernicus HRL 2021 tree-cover density with inclusion defined as $TCD \geq 30$. Sites with land-cover coverage gaps are excluded from default model construction. WorldCover classes are retained only for diagnostic and sensitivity analyses, not as the canonical forest mask.
 
-The canonical forest mask is Copernicus HRL 2021 tree-cover density, with inclusion defined as $TCD \geq 30$. Sites 19, 30, and 47 are excluded by default because of land-cover coverage gaps. ForestPaths genus features remain ablation-only and are not part of the canonical mask.
+\subsection{Trait labels and predictors}
 
-\subsection{Current data contract}
+The supervised labels are sparse hyperspectral trait estimates. EnMAP is the validated label source for the results reported here. PRISMA L2D scenes have been downloaded and aligned to the common grid for a subset of sites, but PRISMA-derived trait maps are excluded from the current model results until the supervised trait-region contract is complete. The five gate traits are leaf area index (LAI), leaf mass per area (LMA), nitrogen, chlorophyll, and lignin.
 
-The current B-layer contract is trait-centered. Each event is defined by site, year, spatial pixel, trait time, and source provenance where available. Sentinel-2 observations are assembled in an eight-slot temporal window using a zero-plus-mask missing-observation policy. A critical data rule is that valid pixels are not assumed to have supervised labels: the B2 manifest construction must retain a finite trait-label check because $valid\_mask=1$ can still coincide with all trait labels missing.
-
-\begin{table}[H]
-\centering
-\caption{Current reintegrated-data contract used by active experiments.}
-\label{tab:data_contract}
-\begin{tabularx}{\linewidth}{lX}
-\toprule
-Component & Current setting \\
-\midrule
-Sample window & 28-day window, 14-day core, $T_{max}=8$ temporal slots \\
-Forest mask & Copernicus HRL 2021 $TCD \geq 30$ \\
-Excluded sites & 19, 30, 47 \\
-Split policy & \texttt{global\_grouped\_70\_15\_15\_seed42} \\
-Canonical input profile & \texttt{with\_full\_time\_context} \\
-Sample metadata profile & \texttt{none}; sample-own site and year are excluded from model inputs \\
-Gate traits & LAI, LMA, Nitrogen, Chlorophyll, Lignin \\
-Label rule & Preserve finite-label and label-mask contracts across all model families \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\section{Methods}
-
-\subsection{Pipeline architecture}
-
-The current execution architecture is shown in Fig.~\ref{fig:pipeline}. Upstream source preparation is separated from model-contract construction so that changes in Sentinel-2, hyperspectral labels, HRL, ERA5-Land, or future auxiliary sources can be traced to the downstream artifacts they invalidate. Model training is only meaningful after the B-layer filtered contract and sequence cache pass validation.
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.95\textwidth]{Figure1_pipeline_architecture.png}
-\caption{Current EcoSpectra model architecture used as the starting point for report figures. In this report, RF is the canonical tree lane, MLP and Transformer are sequence-model lanes, and LightGBM/XGBoost/LSTM/RNN remain extended comparisons unless explicitly promoted.}
-\label{fig:pipeline}
-\end{figure}
-
-\subsection{Model families}
-
-The canonical C-layer model stack consists of random forest, sequence MLP, and Transformer. Random forest provides the CPU tree baseline \citep{breiman2001random}; sequence MLP and Transformer consume the B8 temporal sequence cache, with Transformer following the self-attention sequence-model family introduced by \citet{vaswani2017attention}. LightGBM and XGBoost are active extended tree comparisons in D-layer experiments, not the current canonical C definition.
-
-Fixed hyperparameters for future reintegrated-data experiments are taken from the cap2000 train20 hyperparameter searches recorded in the project memory. RF, LightGBM, and XGBoost use trait-specific defaults for the five gate traits. MLP and Transformer currently use the LMA-selected settings as neural defaults unless newer trait-specific searches supersede them.
-
-\subsection{Evaluation}
-
-Experiments use train, validation, and test partitions from the grouped split. Scalers, target transforms, imputers, and normalizers are fit on train data only. Metrics are reported in original trait scale through RMSE, normalized RMSE, and $R^2$. When a run is still active, this report records status from the run manifest instead of inferring missing metrics.
-
-\section{Active experiments}
-
-\subsection{Accuracy-improvement lane settings}
-
-The current accuracy work is organized as five lanes so that each hypothesis has a defined data scope, model scope, promotion rule, output root, and notebook. Unless otherwise noted, all lanes use cap2000, \texttt{train\_fraction=0.2}, the \texttt{with\_full\_time\_context} input profile, \texttt{sample\_metadata\_profile=none}, and the \texttt{global\_grouped\_70\_15\_15\_seed42} split. Blank result cells in later tables mean that the corresponding JZ run or diagnostic consolidation has not yet produced a final local result.
-
-\begin{table}[H]
-\centering
-\caption{Current accuracy-improvement lane settings.}
-\label{tab:accuracy_lanes_settings}
-\begin{tabularx}{\linewidth}{p{0.08\linewidth}p{0.19\linewidth}X p{0.17\linewidth}}
-\toprule
-Lane & Question & Current experimental setting & Notebook \\
-\midrule
-L1 Climate / ERA5 & Does past-only ERA5-Land context add predictive information beyond Sentinel-2? & Decision traits LAI, LMA, Nitrogen; completed paired recovery root also covers LAI, LMA, Nitrogen, Chlorophyll, and Lignin. Models are RF, MLP, and Transformer. Arms are \texttt{with\_full\_time\_context} and \texttt{with\_full\_time\_context\_era5}. & \texttt{inspect\_L1\_climate\_era5\_cap2000\_train20.ipynb} \\
-L2 Ambient prior & Does self-supervised Sentinel-2 sequence pretraining improve Transformer trait prediction? & Five gate traits. Model is Transformer. Arms are \texttt{baseline\_checkpoint\_arch}, \texttt{transformer\_ambient\_init\_freeze5\_lr0.1}, and \texttt{transformer\_ambient\_init\_freeze10\_lr0.1}. Hyperparameters follow the ambient-checkpoint-compatible setting: batch 128, dropout 0.2, learning rate 0.0003, dimension 128, 4 heads, 3 layers, weight decay 0.0001. JZ job \texttt{697149}, account \texttt{dho@a100}. & \texttt{inspect\_L2\_ambient\_transformer\_cap2000\_train20.ipynb} \\
-L3 Spatial context & Is the pixel-level temporal model missing useful local spatial context? & Fast gate LAI and LMA. Arm is a 3x3 spatial patch CNN temporal regressor against the current sequence Transformer best-HP baseline. Promotion requires non-regression on LAI and LMA before any five-trait or spatial-temporal Transformer expansion. & \texttt{inspect\_L3\_spatial\_context\_cap2000\_train20.ipynb} \\
-L4 Temporal diagnostics & Is year-to-year transfer the main reason accuracy remains below publication level? & No new heavy training by default. Consolidate year-combination, by-year, by-site, trait-range, observation-count, mask-coverage, and climate-sensitivity diagnostics from existing outputs. & \texttt{inspect\_L4\_temporal\_generalization\_diagnostics.ipynb} \\
-L5 Trait relationship & Can biologically related multitask groups reduce negative transfer from the all-20 shared encoder? & Models are MLP and Transformer. Trait groups are resource traits (LMA, C, Cellulose, Fiber, Lignin), pigment/nitrogen traits (Chlorophyll, Carotenoid, Anthocyanin, Nitrogen), and canopy-water traits (LAI, EWT). Sequential JZ blocks are \texttt{group\_mse\_standard}, \texttt{group\_huber\_standard}, \texttt{group\_huber\_yj}, and \texttt{group\_huber\_yj\_balanced}; jobs \texttt{696652 -> 696658 -> 696659 -> 696660}, account \texttt{dho@a100}. & \texttt{inspect\_traitrel\_multitask.ipynb} \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsection{Accuracy-lane result snapshot}
-
-Table~\ref{tab:accuracy_lanes_completed} summarizes completed lane-level results that are ready for interpretation. L1 is positive for RF and MLP and weak for Transformer. L3 does not pass the fast gate because the 3x3 patch CNN is worse than the current sequence Transformer baseline on both LAI and LMA.
-
-\begin{table}[H]
-\centering
-\caption{Completed accuracy-lane result snapshot. Positive $\Delta R^2$ and negative $\Delta$NRMSE indicate improvement.}
-\label{tab:accuracy_lanes_completed}
-\begin{tabular}{lllrrl}
-\toprule
-Lane & Scope & Model or arm & Test $R^2$ / $\Delta R^2$ & Test NRMSE / $\Delta$NRMSE & Decision \\
-\midrule
-L1 & LAI/LMA/Nitrogen & MLP + ERA5 vs baseline & 0.0300 & -0.4466 pp & Positive climate signal \\
-L1 & LAI/LMA/Nitrogen & RF + ERA5 vs baseline & 0.0228 & -0.3219 pp & Positive climate signal \\
-L1 & LAI/LMA/Nitrogen & Transformer + ERA5 vs baseline & 0.0148 & -0.1716 pp & Weak; trait-specific regressions remain \\
-\midrule
-L3 & LAI & 3x3 patch CNN & 0.6112 & 8.9243\% & Worse than baseline \\
-L3 & LAI & Sequence Transformer baseline & 0.6361 & 8.6333\% & Current baseline \\
-L3 & LMA & 3x3 patch CNN & 0.4641 & 11.7882\% & Worse than baseline \\
-L3 & LMA & Sequence Transformer baseline & 0.4992 & 11.3953\% & Current baseline \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[H]
-\centering
-\caption{Accuracy-lane rows whose final results are not yet available locally. Result cells are intentionally left blank until final metrics are pulled and checked.}
-\label{tab:accuracy_lanes_pending}
-\begin{tabularx}{\linewidth}{p{0.09\linewidth}p{0.24\linewidth}p{0.36\linewidth}X}
-\toprule
-Lane & Run or output root & Current status & Result \\
-\midrule
-L2 & JZ job \texttt{697149}; local root \texttt{accuracy\_lanes\_20260509/L2\_ambient\_transformer\_cap2000\_train20} & Running/pending final pull. Compare five-trait paired nRMSE deltas after all 15 tasks complete. & \\
-L4 & Existing cap2000 year-combination and no-pooling roots & Diagnostic consolidation pending. Existing evidence indicates weak temporal transfer, but the final diagnostic table is not yet promoted. & \\
-L5 & JZ sequential blocks \texttt{696652 -> 696658 -> 696659 -> 696660}; local root \texttt{traitrel\_multitask\_train20\_20260509} & Running. Compare grouped multitask arms against corresponding single-trait best-HP and all-20 multitask baselines after watcher pull. & \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsection{Reintegrated B-D-C gate}
-
-The current task is to validate the reintegrated data path before launching a full 20-trait canonical comparison. The active source manifest is \texttt{dev\_sample\_manifest.csv}. B-layer artifacts are written under a reintegrated output root, with an initial capped 5-trait gate under the HRL $TCD \geq 30$ mask. The cap2000 sharded-sequence gate defines 15 planned model-trait rows: RF, MLP, and Transformer across the five gate traits.
+Sentinel-2 region zarrs provide the dense optical predictor time series \citep{drusch2012sentinel}. The default sequence representation includes Sentinel-2 reflectance bands, spectral indices, day-of-year features, relative temporal offsets, and a validity or weight channel. ERA5-Land daily nearest-point data provide optional climate context for the 2022--2025 analysis period \citep{munozsabater2021era5land}.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{Figure2_data_distribution.png}
-\caption{Data distribution diagnostics for the reintegrated cap2000 5-trait gate.}
+\caption{Trait-centered data distribution used by the five-trait benchmark. The figure summarizes the labelled sample support after forest masking and sample construction.}
 \label{fig:data_distribution}
 \end{figure}
+
+\section{Methods}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{Figure1_pipeline_architecture.png}
+\caption{Trait-centered learning framework. Sparse hyperspectral trait labels define supervised events, Sentinel-2 time series provide temporal optical predictors, and ablation blocks test representation, auxiliary information, and transfer robustness under shared preprocessing contracts.}
+\label{fig:framework}
+\end{figure}
+
+\subsection{Trait-centered sample construction}
+
+The training unit is a trait-labelled event defined by site, year, spatial location, acquisition time, and available trait mask. The construction starts from finite trait labels and then links each event to Sentinel-2 observations around the trait date. This rule prevents an important leakage in remote-sensing workflows: a valid optical pixel can still have no supervised trait label and must not be treated as a training target.
+
+The sample contract preserves the label mask across all model families. Target scaling, imputers, normalizers, and any learned preprocessing are fit on the training partition only. Source provenance fields are retained when available so that EnMAP-only, PRISMA-only, pooled, and cross-source validation can be evaluated under the same framework in the next label-source ablation.
+
+\begin{table}[H]
+\centering
+\caption{Default sample and model contract used by the main experiments.}
+\label{tab:contract}
+\begin{tabularx}{\linewidth}{lX}
+\toprule
+Component & Default setting \\
+\midrule
+Forest mask & Copernicus HRL 2021 $TCD \geq 30$ \\
+Traits & LAI, LMA, nitrogen, chlorophyll, lignin \\
+Default temporal window & 28 days, $T_{\max}=8$ temporal slots \\
+Missing observations & Zero-filled values plus explicit mask/weight channel \\
+Default split & Grouped train/validation/test split by pixel identity \\
+Canonical models & Random forest, sequence MLP, Transformer \\
+Sample metadata & Site and year are excluded from default model inputs \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Predictor representation}
+
+The default representation is an eight-slot Sentinel-2 temporal window. Observations are ordered by temporal proximity to the trait acquisition. Missing slots are zero-filled and accompanied by an explicit observation mask or weight, allowing neural models to distinguish missing observations from low reflectance. This representation is deliberately simple: the data-volume and temporal-window ablations then test whether longer or denser temporal context is needed.
+
+\subsection{Model architectures}
+
+The canonical comparison uses three model families. Random forest is the non-neural tree baseline \citep{breiman2001random}. The sequence MLP consumes the flattened temporal representation while preserving the same mask features. The Transformer uses self-attention over the temporal tokens following the general sequence-modelling architecture of \citet{vaswani2017attention}. XGBoost, LightGBM, LSTM, and RNN variants are treated as supplementary extended comparisons rather than the central method claim.
+
+\subsection{Auxiliary information protocols}
+
+ERA5-Land climate context is constructed as past-only biweekly climate information matched to the trait-centered sample. This design tests whether external climate variables provide predictive information beyond the Sentinel-2 optical time series.
+
+The ambient pretraining experiment uses self-supervised masked reconstruction of Sentinel-2 sequences before supervised trait fitting. The supervised Transformer arms compare a from-scratch checkpoint-compatible baseline with ambient-initialized encoders under frozen-encoder schedules. Here we interpret only the completed and consolidated auxiliary results; incomplete ambient runs are not used for numerical conclusions.
+
+\subsection{Generalization protocol}
+
+We distinguish three evaluation regimes. The grouped in-domain regime estimates performance when train and test samples are drawn from the same labelled era but grouped to avoid pixel-level leakage. The temporal-transfer regime holds out test years and evaluates year-to-year transfer. The spatial-transfer regime holds out geographic clusters and evaluates transfer across site groups. These regimes answer different questions and are not interchangeable: strong grouped performance does not imply temporal or spatial robustness.
+
+\subsection{Statistical comparison protocol}
+
+All model comparisons are reported as paired differences when a treatment and baseline share the same trait, split, and model family. We report $\Delta R^2$ and $\Delta$NRMSE, where positive $\Delta R^2$ and negative $\Delta$NRMSE indicate improvement. For the next revision, uncertainty intervals will be computed using bootstrap resampling over paired residual groups or paired split units, with multiple-comparison correction applied to the primary trait-level tests.
+
+\section{Results}
+
+\subsection{Baseline performance}
+
+The five-trait benchmark establishes the reference point for later ablations. Predictive skill is strongly trait dependent: canopy and leaf-structure variables are more stable than pigment-related variables, and the ranking of model families depends on trait. This pattern motivates a systematic ablation rather than a single headline accuracy number.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{Figure3_reintegrated_performance_heatmap.png}
-\caption{Prompt-standard performance heatmap from the reintegrated cap2000 5-trait running summary. Metrics are interpreted only for completed rows.}
-\label{fig:gate_heatmap}
+\caption{Baseline performance for the five gate traits and three canonical model families. Metrics are shown as trait-level $R^2$ and nRMSE for the grouped test partition.}
+\label{fig:baseline_heatmap}
 \end{figure}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{Figure4_reintegrated_scatter.png}
-\caption{Observed versus predicted trait values from the reintegrated cap2000 5-trait running summary.}
-\label{fig:gate_scatter}
+\caption{Observed versus predicted values for the baseline grouped-split benchmark. The scatter panels show trait-specific residual structure that is not captured by mean accuracy alone.}
+\label{fig:baseline_scatter}
 \end{figure}
 
-\subsection{Cap2000 best-HP low-observation-weighted five-model experiment}
+\subsection{Design choices: data volume and temporal window}
 
-The low-observation-weighted experiment tests RF, XGBoost, LightGBM, MLP, and Transformer on the cap2000 five gate traits, with \texttt{train\_fraction=0.2}. Samples with fewer than three valid temporal observations receive training weight 0.5; all other samples receive weight 1.0. The tree lanes can run with the existing trait-specific incumbents. MLP and Transformer are blocked for four traits until five-trait neural incumbents are complete.
-
-\begin{table}[H]
-\centering
-\caption{Status of the cap2000 best-HP low-observation-weighted five-model run from \texttt{run\_manifest.csv}.}
-\label{tab:lowobs_status}
-\begin{tabular}{lrrrrr}
-\toprule
-Model & Blocked & OK & Pending & Running & Skipped \\
-\midrule
-LightGBM & 0 & 0 & 5 & 0 & 0 \\
-MLP & 4 & 0 & 0 & 0 & 1 \\
-Random forest & 0 & 1 & 3 & 1 & 0 \\
-Transformer & 4 & 0 & 0 & 0 & 1 \\
-XGBoost & 0 & 0 & 5 & 0 & 0 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-At report time, the only completed low-observation-weighted metric row is RF on LMA: 32,276 train samples, 34,586 validation samples, 34,427 test samples, test NRMSE 12.09\%, and test $R^2=0.437$. All other low-observation-weighted metrics should be treated as unavailable until their manifest rows reach \texttt{ok}.
+The B5/B6-filtered sample-size experiment tests whether the current benchmark is limited primarily by labelled data volume. In the completed three-trait rows, mean test nRMSE decreases from approximately 9.49\% at cap2000 to 7.96\% for the cap20000 XGBoost arm, while the completed Transformer rows improve from 9.44\% at cap2000 to 8.41\% at cap5000. The neural cap50000 rows are excluded from the numerical conclusions because final summary files were unavailable at manuscript generation time.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{Figure7_lowobs_performance_heatmap.png}
-\caption{Cap2000 best-HP low-observation-weighted prompt-standard heatmap. The figure is retained as a report placeholder while the manifest still contains pending and blocked rows.}
-\label{fig:lowobs_heatmap}
+\includegraphics[width=0.95\textwidth]{Figure5_sample_size_curve.png}
+\caption{Effect of per-site-year sample cap in the B5/B6-filtered WorldCover37 experiment. The figure summarizes completed model-trait rows and separates completed neural rows from the larger XGBoost cap trajectory.}
+\label{fig:sample_size}
 \end{figure}
 
-\subsection{ERA5-Land context ablation}
+The sample-matched temporal-window experiment controls for event availability by restricting all windows to the same cohort. Under this stricter comparison, the 28-day window has the best mean performance among the tested windows (mean $R^2=0.497$, mean nRMSE $=10.39\%$), while 0.5-day and 365-day windows are weaker (mean nRMSE $=10.66\%$ and $10.67\%$, respectively). Longer temporal context is therefore not automatically beneficial once the same labelled events are compared across windows.
 
-The ERA5-Land ablation compares the canonical full-time-context profile against the same profile augmented with past-biweekly ERA5-Land context. It uses RF, MLP, and Transformer across LAI, LMA, Nitrogen, Chlorophyll, and Lignin, paired by the same grouped split and trait scope.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{Figure6_temporal_window_curve.png}
+\caption{Sample-matched temporal-window experiment. Each arm uses the same cohort of samples and differs only in the Sentinel-2 temporal context available to the model.}
+\label{fig:temporal_window}
+\end{figure}
+
+\subsection{Auxiliary information streams}
+
+ERA5-Land context improves the random forest and MLP more consistently than the Transformer. Across the five gate traits, MLP gains average $\Delta R^2=0.034$ and $\Delta$NRMSE $=-0.462$ percentage points, while random forest gains average $\Delta R^2=0.027$ and $\Delta$NRMSE $=-0.357$ percentage points. The Transformer gain is much smaller on average ($\Delta R^2=0.004$, $\Delta$NRMSE $=-0.051$ percentage points) and includes regressions for LAI, LMA, chlorophyll, and lignin.
 
 \begin{table}[H]
 \centering
-\caption{Mean paired ERA5-Land deltas over five gate traits. Positive $\Delta R^2$ and negative $\Delta$NRMSE indicate improvement from adding ERA5-Land context.}
+\caption{Mean paired ERA5-Land deltas across the five gate traits. Negative $\Delta$NRMSE indicates improvement.}
 \label{tab:era5_delta}
 \begin{tabular}{lrrr}
 \toprule
-Model & Traits & Mean $\Delta R^2$ & Mean $\Delta$NRMSE percentage points \\
+Model & Traits & Mean $\Delta R^2$ & Mean $\Delta$NRMSE (percentage points) \\
 \midrule
-MLP & 5 & 0.0343 & -0.4617 \\
-Random forest & 5 & 0.0270 & -0.3567 \\
-Transformer & 5 & 0.0035 & -0.0512 \\
-\midrule
-All paired rows & 15 & 0.0216 & -0.2899 \\
+MLP & 5 & 0.034 & -0.462 \\
+Random forest & 5 & 0.027 & -0.357 \\
+Transformer & 5 & 0.004 & -0.051 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -243,41 +184,53 @@ All paired rows & 15 & 0.0216 & -0.2899 \\
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{Figure5_era5_barplot.png}
-\caption{ERA5-Land ablation performance summary generated from paired model-trait outputs.}
-\label{fig:era5_barplot}
+\caption{ERA5-Land ablation performance summary. The climate context provides model-family-specific gains rather than a uniform improvement across architectures.}
+\label{fig:era5}
 \end{figure}
+
+This contrast suggests that auxiliary information interacts with architectural inductive bias. Tree models and MLPs may use climate variables as explicit shortcuts for phenological and stress-related variation. The Transformer already sees the temporal optical sequence and may encode some of the same seasonal structure, making ERA5 more redundant or even harmful for individual traits. Ambient masked pretraining targets a different auxiliary pathway: it changes the representation learned by the neural model rather than adding external covariates. The focused ambient arms are therefore retained as a neural-specific auxiliary experiment, but their final paired deltas are not used in this result text until the consolidated outputs are complete.
+
+\subsection{Generalization across years and sites}
+
+Out-of-domain evaluation is substantially harder than grouped in-domain evaluation. In the B5/B6-filtered cross-year experiment, mean $R^2$ over completed cap5000/cap20000 rows is 0.387 for MLP, 0.365 for Transformer, and 0.368 for XGBoost. Trait differences are large: LAI transfers best across years (mean $R^2=0.599$), LMA is intermediate (0.388), and chlorophyll is weak (0.134). This pattern is consistent with trait distribution drift and with lower signal-to-noise for pigment-related labels.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.95\textwidth]{Figure8_era5_scatter.png}
-\caption{ERA5-Land ablation observed-versus-predicted diagnostic.}
-\label{fig:era5_scatter}
+\includegraphics[width=0.95\textwidth]{Figure7_temporal_generalization_heatmap.png}
+\caption{Temporal-transfer performance across cross-year splits. Rows encode train/validation/test-year configurations and columns encode model family, showing that year transfer is a distinct evaluation regime from grouped in-domain testing.}
+\label{fig:temporal_generalization}
 \end{figure}
 
-\subsection{Hyperparameter and year-combination sensitivity}
-
-The cap2000 train20 hyperparameter searches provide the fixed defaults used by the current reintegrated experiments. Tree hyperparameter search outputs contain 510 rows across RF, LightGBM, and XGBoost and the five gate traits. The year-combination sensitivity experiment is registered and has a 60-row manifest across XGBoost, MLP, and Transformer, but at report time it is not yet complete enough for result interpretation.
+Spatial transfer is even more challenging in the current cluster split. Mean $R^2$ falls to 0.279 for MLP, 0.245 for Transformer, and 0.233 for XGBoost. Again, LAI is the most transferable trait (mean $R^2=0.469$), LMA is moderate (0.284), and chlorophyll is near zero (0.004). These results indicate that cross-site evaluation combines covariate shift in Sentinel-2 inputs, label shift in trait distributions, and possible concept shift in the reflectance--trait relationship across forest contexts.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\textwidth]{Figure6_cap2000_search_summary.png}
-\caption{Summary figure from cap2000 tree and neural hyperparameter-search interpretation.}
-\label{fig:hp_summary}
+\includegraphics[width=0.95\textwidth]{Figure8_spatial_generalization_heatmap.png}
+\caption{Spatial-transfer performance across held-out site-cluster splits. The result highlights the need to report spatial transfer separately from grouped in-domain performance.}
+\label{fig:spatial_generalization}
 \end{figure}
+
+\subsection{Label-source ablation}
+
+Label source is a methodological design choice rather than a bookkeeping detail. A model trained on EnMAP-derived labels may learn both trait signal and retrieval-specific bias. PRISMA therefore enters the framework as a required label-source ablation with five intended arms: EnMAP-only, PRISMA-only, pooled EnMAP+PRISMA, EnMAP-to-PRISMA transfer, and PRISMA-to-EnMAP transfer. The minimum defensible version is a single-source versus pooled comparison. Because PRISMA trait-region outputs remain outside the validated supervised contract, this version reports the design and rationale but does not claim a PRISMA result.
 
 \section{Discussion}
 
-The current evidence supports four practical conclusions. First, the reintegrated path is now sufficiently structured to be reported through a B-D-C gate: source matching, HRL filtering, grouped splits, and sequence-cache construction are treated as explicit contracts rather than implicit preprocessing details. Second, ERA5-Land context currently shows a useful paired signal for RF and MLP, but the Transformer result is weak and includes trait-level regressions, so ERA5 should be treated as a model-family-specific accuracy lever rather than a universal default. Third, the lightweight spatial-context gate does not support immediate expansion: the 3x3 patch CNN is worse than the sequence Transformer on both LAI and LMA. Fourth, the ambient-prior, temporal-diagnostic, and trait-relationship multitask lanes are still active and should not be interpreted until their final local summaries are pulled and checked.
+The main methodological result is that Sentinel-2 trait modelling is sensitive to how the labelled event is represented and evaluated. Baseline grouped-split performance is necessary but insufficient: the same model can look useful in-domain and weak under year or site transfer. The temporal-window experiment further shows that adding longer Sentinel-2 context is not automatically beneficial once sample availability is controlled, so temporal representation should be treated as a design axis rather than an assumed monotonic improvement.
 
-The main limitation of this report is that it is a live technical snapshot. Some figures are generated from running summaries and should be regenerated after all manifest rows reach final status. In particular, the L2 ambient-prior and L5 trait-relationship results require completed JZ pulls, and the L4 temporal-generalization diagnostics require a consolidated notebook table before their results can be promoted from status tracking to scientific conclusions.
+Auxiliary information is also family specific. ERA5-Land context improves RF and MLP more than the Transformer, which suggests that external variables are most useful when the base architecture has weaker temporal inductive bias. This is a useful negative constraint: climate features should not be promoted as a universal default just because they improve some model families. Ambient pretraining tests a complementary hypothesis, namely whether a neural temporal encoder can be improved before supervised fitting, but final interpretation requires the consolidated ambient result table.
+
+The generalization results point to three failure modes that should be separated in future work. Covariate shift occurs when held-out years or sites have different Sentinel-2 input distributions. Label shift occurs when the trait range differs between train and test partitions. Concept shift occurs when the same optical signal maps to different trait values across forest or climate contexts. Cross-year and cross-site diagnostics should therefore include trait-range overlap, input-distribution overlap, and residual structure rather than only average accuracy.
+
+The major remaining evidence gap is label-source robustness. PRISMA has been prepared as a supplemental hyperspectral label source, but the supervised PRISMA trait contract must be completed before the EnMAP/PRISMA/pooled comparison can be interpreted. This ablation is essential for a methods paper because it tests whether pooled multi-source supervision improves robustness or introduces sensor-specific bias.
 
 \section{Conclusion}
 
-This EcoSpectra technical-report revision establishes a reproducible narrative for the current accuracy-improvement lanes. The immediate next revision should fill the blank L2, L4, and L5 result cells after final local summaries are available, regenerate prompt-standard figures, and then decide which lane merits promotion beyond cap2000 train20.
+We present a trait-centered framework for learning forest functional traits from Sentinel-2 time series and sparse hyperspectral labels. The current evidence supports four methodological recommendations. First, start from finite trait-labelled events rather than valid optical pixels. Second, report temporal representation and sample-volume sensitivity rather than assuming a default window is harmless. Third, evaluate auxiliary information by model family because ERA5-Land gains are not uniform across architectures. Fourth, separate grouped in-domain performance from temporal and spatial transfer. These design choices form the basis for a defensible RSE methods paper and define the next required experiment: a label-source ablation across EnMAP, PRISMA, and pooled supervision.
 
 \section*{Acknowledgments}
 
-This report is generated from the EcoSpectra traits-model project memory, run manifests, and prompt-standard analysis figures available on 2026-05-09.
+This manuscript was generated from the EcoSpectra traits-model project memory, run manifests, and analysis figures available on 2026-05-16.
 
 \bibliographystyle{elsarticle-harv}
 \bibliography{ecospectra_reference}
