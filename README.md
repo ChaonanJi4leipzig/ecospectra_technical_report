@@ -13,6 +13,7 @@ Primary source files:
 Current figure set:
 
 - `Figure1_trait_centered_framework.pdf`: trait-centered methods schematic
+- `Figure2_study_site_map.png`: European retained-site and filtered-cohort map
 - `Figure3_reintegrated_performance_heatmap.png`: five-trait baseline accuracy
 - `Figure5_sample_size_curve.png`: sample-size ablation
 - `Figure6_temporal_window_curve.png`: temporal-window ablation
