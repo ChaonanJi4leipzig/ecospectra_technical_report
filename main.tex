@@ -29,7 +29,7 @@
 \address{EcoSpectra traits-model project}
 
 \begin{abstract}
-Forest functional traits link canopy structure and leaf biochemistry to ecosystem functioning, carbon exchange, and biodiversity, but spatially explicit trait observations remain sparse at landscape to continental scales. Sentinel-2 provides dense optical time series that could extend sparse hyperspectral trait labels, yet the design choices required for reliable trait-centered learning are rarely isolated. We evaluate a framework that anchors supervised samples on finite hyperspectral trait labels and links them to Sentinel-2 temporal windows under shared preprocessing, model-selection, and transfer-evaluation protocols. Across five traits and three canonical model families, baseline performance is strongly trait dependent, with LAI transferring more reliably than chlorophyll. In a B5/B6-filtered three-trait benchmark, increasing the per-site-year sample cap reduced mean nRMSE from 9.49\% at cap2000 to 7.96\% for the cap20000 XGBoost arm, while the Transformer improved from 9.44\% at cap2000 to 8.41\% at cap5000. A sample-matched temporal-window experiment showed that 28 days gave the best mean performance among the evaluated windows ($R^2=0.497$, nRMSE $=10.39\%$), indicating that longer temporal context is not automatically beneficial when event availability is controlled. ERA5-Land climate context improved random forest and MLP performance ($\Delta R^2=0.027$ and 0.034, respectively) but had little average effect for the Transformer ($\Delta R^2=0.004$). Cross-year and cross-site evaluation reduced mean $R^2$ relative to grouped in-domain testing, especially for chlorophyll, demonstrating that temporal and spatial transfer must be reported as primary outcomes rather than diagnostics. These results show that Sentinel-2 trait upscaling from sparse hyperspectral labels is governed by interacting choices in representation, auxiliary information, and validation regime.
+Forest functional traits link canopy structure and leaf biochemistry to ecosystem functioning, carbon exchange, and biodiversity, but spatially explicit trait observations remain sparse at landscape to continental scales. Sentinel-2 provides dense optical time series that could extend sparse hyperspectral trait labels, yet the design choices required for reliable trait-centered learning are rarely isolated. We evaluate a framework that anchors supervised samples on finite hyperspectral trait labels and links them to Sentinel-2 temporal windows under shared preprocessing, model-selection, and transfer-evaluation protocols. In a five-trait grouped benchmark, model skill was trait dependent: LAI reached the highest grouped performance ($R^2=0.645$, nRMSE $=8.5\%$ for MLP), whereas chlorophyll and lignin were weaker. In a separate B5/B6-filtered three-trait sample-size benchmark, mean nRMSE decreased from 9.49\% at cap2000 to 7.96\% at cap20000 for the complete XGBoost trajectory; Transformer improved from 9.44\% at cap2000 to 8.41\% at cap5000, but higher-cap neural rows differed in trait coverage and were not interpreted as a monotonic scaling curve. A sample-matched temporal-window experiment showed that 28 days gave the best mean performance among the evaluated windows ($R^2=0.497$, nRMSE $=10.39\%$). ERA5-Land climate context improved random forest and MLP performance ($\Delta R^2=0.027$ and 0.034, respectively) but had little average effect for the Transformer ($\Delta R^2=0.004$). Cross-year and cross-site evaluation reduced mean $R^2$ relative to grouped in-domain testing, especially for chlorophyll, demonstrating that temporal and spatial transfer must be reported as primary outcomes rather than diagnostics. These results show that Sentinel-2 trait upscaling from sparse hyperspectral labels is governed by interacting choices in representation, auxiliary information, and validation regime.
 \end{abstract}
 
 \begin{keyword}
@@ -60,6 +60,10 @@ The analysis uses European forest sites with Sentinel-2 temporal coverage, hyper
 Trait labels are sparse hyperspectral trait estimates derived from EnMAP scenes, with PRISMA providing an independent hyperspectral mission for label-source extension \citep{guanter2015enmap, cogliati2021prisma}. The supervised experiments reported here use the validated EnMAP trait-label contract. The five focal traits are LAI, LMA, nitrogen, chlorophyll, and lignin.
 
 Sentinel-2 region zarrs provide dense optical predictor time series \citep{drusch2012sentinel}. Predictors include reflectance bands, spectral indices, day-of-year features, relative temporal offsets, and an observation mask or weight channel. ERA5-Land daily nearest-point data provide optional climate context matched to trait-centered samples \citep{munozsabater2021era5land}.
+
+\subsection{Analysis cohorts}
+
+The manuscript separates two analysis cohorts to avoid conflating data contracts. The five-trait grouped cohort is used to summarize baseline model-family behavior and the ERA5-Land paired ablation. The B5/B6-filtered WorldCover37 cohort is used for sample-size, temporal-window, and temporal/spatial transfer analyses; this cohort focuses on LAI, LMA, and chlorophyll because these traits have the most complete support in the filtered design.
 
 \section{Methods}
 
@@ -113,15 +117,13 @@ Hyperparameters are selected using validation nRMSE under the same split and sam
 
 ERA5-Land climate context is constructed as past-only climate information matched to each trait-labelled event. This prevents future climate information from entering the predictor stream. The climate ablation compares matched Sentinel-2-only and Sentinel-2-plus-ERA5 designs under paired trait, split, and model-family settings.
 
-Self-supervised temporal pretraining is treated as a separate auxiliary-information mechanism because it modifies the representation learned by a neural encoder rather than adding external covariates. The manuscript-level interpretation of auxiliary information therefore distinguishes covariate augmentation from representation pretraining.
-
 \subsection{Generalization protocol}
 
-We distinguish four evaluation regimes. The grouped in-domain regime estimates performance when train and test samples are drawn from the same labelled era while grouping by pixel identity to avoid leakage. The temporal-transfer regime holds out target years and evaluates year-to-year transfer. The spatial-transfer regime holds out geographic site clusters and evaluates transfer across forest contexts. The label-source regime, defined for multi-source supervision, compares EnMAP-only, PRISMA-only, pooled EnMAP+PRISMA, and cross-source transfer arms. These regimes address different scientific questions and are reported separately.
+We distinguish three evaluation regimes. The grouped in-domain regime estimates performance when train and test samples are drawn from the same labelled era while grouping by pixel identity to avoid leakage. The temporal-transfer regime holds out target years and evaluates year-to-year transfer. The spatial-transfer regime holds out geographic site clusters and evaluates transfer across forest contexts. These regimes address different scientific questions and are reported separately.
 
 \subsection{Statistical comparison protocol}
 
-Ablation effects are reported as paired differences when treatment and baseline share the same trait, split, and model family. We use $\Delta R^2$ and $\Delta$NRMSE, with positive $\Delta R^2$ and negative $\Delta$NRMSE indicating improvement. The target uncertainty protocol is bootstrap resampling over paired split units, followed by multiple-comparison correction across the primary trait-level tests.
+Ablation effects are reported as paired differences when treatment and baseline share the same trait, split, and model family. We use $\Delta R^2$ and $\Delta$NRMSE, with positive $\Delta R^2$ and negative $\Delta$NRMSE indicating improvement. For the ERA5-Land paired ablation, 95\% confidence intervals are estimated by bootstrap resampling across the five paired trait rows within each model family. Transfer heatmaps are reported as descriptive split-level summaries because they do not yet include a paired residual bootstrap.
 
 \subsection{Computational cost reporting}
 
@@ -131,18 +133,18 @@ Computational cost is defined per model family as wall-clock time, accelerator t
 
 \subsection{Baseline performance}
 
-The five-trait benchmark provides the reference point for the ablation study. Performance varies strongly by trait and by model family, indicating that a single aggregate accuracy score would obscure meaningful structure in the results. LAI and LMA show more stable prediction patterns than chlorophyll, while model-family rankings differ across traits.
+The five-trait grouped benchmark provides the reference point for the canonical model-family comparison. Performance varies strongly by trait and by model family, indicating that a single aggregate accuracy score would obscure meaningful structure in the results. MLP gives the best value for every trait in both metrics (asterisks in Fig.~\ref{fig:baseline_heatmap}), but the margin over Transformer is small for LAI, chlorophyll, and lignin. RF is consistently weaker in this benchmark, with the largest gap for lignin and LMA. Trait difficulty is also evident: LAI has the strongest grouped performance ($R^2=0.645$, nRMSE $=8.5\%$ for MLP), whereas chlorophyll and lignin remain below $R^2=0.50$ even for the best model.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{Figure3_reintegrated_performance_heatmap.png}
-\caption{Baseline performance for the five focal traits and three canonical model families. Metrics are shown as trait-level $R^2$ and nRMSE for the grouped test partition.}
+\caption{Baseline performance for the five focal traits and three canonical model families in the grouped test partition. Asterisks mark the best model within each trait and metric: highest $R^2$ in panel a and lowest nRMSE in panel b.}
 \label{fig:baseline_heatmap}
 \end{figure}
 
 \subsection{Design choices: data volume and temporal window}
 
-The sample-size ablation tests whether prediction is limited by labelled-data volume. In the B5/B6-filtered three-trait benchmark, mean test nRMSE decreases from 9.49\% at cap2000 to 7.96\% at cap20000 for the XGBoost arm. The Transformer improves from 9.44\% at cap2000 to 8.41\% at cap5000. The gains indicate that additional labelled samples help, but the benefit is model- and sample-range dependent rather than monotonic across all settings.
+The sample-size ablation tests whether prediction is limited by labelled-data volume in the B5/B6-filtered three-trait cohort. Mean test nRMSE decreases from 9.49\% at cap2000 to 7.96\% at cap20000 for the complete XGBoost trajectory. Transformer improves from 9.44\% at cap2000 to 8.41\% at cap5000. The apparent cap10000 Transformer value should not be interpreted as a deterioration in the same three-trait curve because that row contains only two traits, while the cap2000 and cap5000 rows contain all three. The defensible conclusion is therefore that sample scaling improves the complete XGBoost trajectory and improves Transformer through cap5000, but the available neural rows do not establish monotonic high-cap scaling.
 
 \begin{figure}[H]
 \centering
@@ -162,19 +164,19 @@ The sample-matched temporal-window experiment controls for event availability by
 
 \subsection{Auxiliary information streams}
 
-ERA5-Land context improves the random forest and MLP more consistently than the Transformer. Across the five focal traits, the MLP gains average $\Delta R^2=0.034$ and $\Delta$NRMSE $=-0.46$ percentage points, while random forest gains average $\Delta R^2=0.027$ and $\Delta$NRMSE $=-0.36$ percentage points. The Transformer gain is much smaller on average ($\Delta R^2=0.004$, $\Delta$NRMSE $=-0.05$ percentage points), suggesting that climate covariates are not uniformly useful across temporal architectures.
+ERA5-Land context improves the random forest and MLP more consistently than the Transformer. Across the five focal traits, the MLP gains average $\Delta R^2=0.034$ (95\% CI 0.027 to 0.040) and $\Delta$NRMSE $=-0.46$ percentage points (95\% CI -0.55 to -0.38), while random forest gains average $\Delta R^2=0.027$ (95\% CI 0.020 to 0.034) and $\Delta$NRMSE $=-0.36$ percentage points (95\% CI -0.48 to -0.26). The Transformer gain is much smaller and its confidence interval overlaps zero ($\Delta R^2=0.004$, 95\% CI -0.017 to 0.034; $\Delta$NRMSE $=-0.05$ percentage points, 95\% CI -0.42 to 0.18), suggesting that climate covariates are not uniformly useful across temporal architectures.
 
 \begin{table}[H]
 \centering
-\caption{Mean paired ERA5-Land deltas across the five focal traits. Negative $\Delta$NRMSE indicates improvement.}
+\caption{Mean paired ERA5-Land deltas across the five focal traits with trait-bootstrap 95\% confidence intervals. Negative $\Delta$NRMSE indicates improvement.}
 \label{tab:era5_delta}
 \begin{tabular}{lrrr}
 \toprule
-Model & Traits & Mean $\Delta R^2$ & Mean $\Delta$NRMSE (percentage points) \\
+Model & Traits & Mean $\Delta R^2$ [95\% CI] & Mean $\Delta$NRMSE [95\% CI] \\
 \midrule
-MLP & 5 & 0.034 & -0.46 \\
-Random forest & 5 & 0.027 & -0.36 \\
-Transformer & 5 & 0.004 & -0.05 \\
+MLP & 5 & 0.034 [0.027, 0.040] & -0.46 [-0.55, -0.38] \\
+Random forest & 5 & 0.027 [0.020, 0.034] & -0.36 [-0.48, -0.26] \\
+Transformer & 5 & 0.004 [-0.017, 0.034] & -0.05 [-0.42, 0.18] \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -182,7 +184,7 @@ Transformer & 5 & 0.004 & -0.05 \\
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{Figure5_era5_barplot.png}
-\caption{ERA5-Land ablation performance summary. Climate context provides model-family-specific gains rather than a uniform improvement across architectures.}
+\caption{ERA5-Land ablation performance summary. Bars show mean paired deltas across traits; error bars show trait-bootstrap 95\% confidence intervals.}
 \label{fig:era5}
 \end{figure}
 
@@ -190,31 +192,31 @@ This model-family dependence suggests that ERA5-Land acts partly as an explicit 
 
 \subsection{Generalization across years and sites}
 
-Out-of-domain evaluation is substantially harder than grouped in-domain evaluation. In the B5/B6-filtered cross-year experiment, mean $R^2$ is 0.387 for MLP, 0.365 for Transformer, and 0.368 for XGBoost. Trait differences are large: LAI transfers best across years (mean $R^2=0.599$), LMA is intermediate (0.388), and chlorophyll is weak (0.134). This pattern is consistent with trait distribution drift and lower signal-to-noise for pigment-related labels.
+Out-of-domain evaluation is substantially harder than grouped in-domain evaluation. In the B5/B6-filtered cross-year experiment, mean $R^2$ is 0.387 for MLP, 0.365 for Transformer, and 0.368 for XGBoost. Trait differences are large: LAI transfers best across years (mean $R^2=0.599$), LMA is intermediate (0.388), and chlorophyll is weak (0.134). This split-level evidence identifies transfer sensitivity but does not by itself separate input covariate shift from label distribution shift.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{Figure7_temporal_generalization_heatmap.png}
-\caption{Temporal-transfer performance across cross-year splits. Rows encode train/validation/test-year configurations and columns encode model family, showing that year transfer is distinct from grouped in-domain testing.}
+\caption{Temporal-transfer performance across cross-year splits. Each cell shows mean test $R^2$ across LAI, LMA, and chlorophyll for the labelled train/test-year configuration.}
 \label{fig:temporal_generalization}
 \end{figure}
 
-Spatial transfer is even more challenging in the site-cluster split. Mean $R^2$ falls to 0.279 for MLP, 0.245 for Transformer, and 0.233 for XGBoost. LAI remains the most transferable trait (mean $R^2=0.469$), LMA is moderate (0.284), and chlorophyll is near zero (0.004). These results show that cross-site evaluation combines covariate shift in Sentinel-2 inputs, label shift in trait distributions, and possible concept shift in the reflectance--trait relationship across forest contexts.
+Spatial transfer is even more challenging in the site-cluster split. Mean $R^2$ falls to 0.279 for MLP, 0.245 for Transformer, and 0.233 for XGBoost. LAI remains the most transferable trait (mean $R^2=0.469$), LMA is moderate (0.284), and chlorophyll is near zero (0.004). These results show where transfer fails; attributing the failures to covariate shift, label shift, or changes in the reflectance--trait relationship requires additional distribution-overlap diagnostics.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{Figure8_spatial_generalization_heatmap.png}
-\caption{Spatial-transfer performance across held-out site-cluster splits. Spatial transfer is reported separately from grouped in-domain performance because it tests a different deployment regime.}
+\caption{Spatial-transfer performance across held-out site-cluster splits. Each cell shows mean test $R^2$ across LAI, LMA, and chlorophyll for the held-out test cluster.}
 \label{fig:spatial_generalization}
 \end{figure}
 
 \section{Discussion}
 
-The main result is that Sentinel-2 trait learning from sparse hyperspectral labels is governed by representation and validation choices as much as by model architecture. Anchoring samples on finite trait labels avoids conflating optical data availability with supervised target availability. The temporal-window ablation shows that more context is not inherently better; temporal context must be evaluated under matched sample availability because longer windows can add noisy or weakly relevant observations.
+The main result is that Sentinel-2 trait learning from sparse hyperspectral labels is governed by representation and validation choices as much as by model architecture. This extends earlier trait-mapping and biophysical-retrieval work, which emphasized the potential of optical spectroscopy and machine-learning retrieval but also highlighted scaling, uncertainty, and operational robustness as persistent challenges \citep{homolova2013review, verrelst2015review}. Anchoring samples on finite trait labels addresses one part of that scaling problem by preventing optically valid but unlabelled pixels from entering the supervised target contract. The temporal-window ablation shows that more context is not inherently better; temporal context must be evaluated under matched sample availability because longer windows can add noisy or weakly relevant observations.
 
 The ERA5-Land ablation shows that auxiliary information is model-family specific. The stronger gains for random forest and MLP suggest that explicit climate covariates can compensate for weaker temporal inductive bias. The weaker Transformer response is consistent with partial redundancy between climate covariates and phenological information already encoded in the Sentinel-2 sequence. This distinction matters for method design: adding climate context should be justified by paired ablations rather than adopted as a universal default.
 
-The transfer experiments demonstrate that grouped in-domain accuracy is not sufficient evidence for robustness. Temporal transfer primarily tests year-to-year differences in phenology, climate, and label distribution, whereas spatial transfer also tests changes in forest composition, background conditions, and reflectance--trait relationships. The poor chlorophyll transfer performance highlights the need to separate trait distribution shift from model failure, especially for traits with lower signal-to-noise or narrower dynamic range in the training labels.
+The transfer experiments demonstrate that grouped in-domain accuracy is not sufficient evidence for robustness. Temporal transfer primarily tests year-to-year differences in phenology, climate, and label distribution, whereas spatial transfer also tests changes in forest composition, background conditions, and reflectance--trait relationships. The poor chlorophyll transfer performance highlights the need to separate trait distribution shift from model failure, especially for traits with lower signal-to-noise or narrower dynamic range in the training labels. The present transfer figures should therefore be read as robustness screening rather than a complete failure-mode attribution.
 
 These findings align with the broader goal of monitoring plant functional diversity from space \citep{jetz2016monitoring}, but they also show that trait upscaling from sparse labels requires explicit validation regimes. A defensible workflow should report in-domain accuracy, temporal transfer, spatial transfer, and label-source sensitivity as separate evidence streams. Future multi-source experiments with EnMAP and PRISMA should test whether pooled hyperspectral supervision improves robustness or introduces sensor-specific retrieval bias.
 
